@@ -10,29 +10,34 @@ namespace Cliente
     public partial class FrmValidador : Form
     {
         private TcpClient remoto;
-        private NetworkStream flujo;
+        private NetworkStream flujo; // El flujo ya no es usado por el método HazOperacion
 
+        // Instancia de Protocolo: 
+        private readonly Protocolo.Protocolo clienteProtocolo = new Protocolo.Protocolo();
         public FrmValidador()
         {
-            InitializeComponent();
+            InitializeComponent();  
         }
 
         private void FrmValidador_Load(object sender, EventArgs e)
         {
             try
             {
+                // Conexión inicial al Servidor. El puerto debe ser 8080 (consistencia con Servidor)
                 remoto = new TcpClient("127.0.0.1", 8080);
-                flujo = remoto.GetStream();
+                // El flujo se usaba antes en HazOperacion, ahora se maneja dentro de Protocolo.HazOperacion
             }
             catch (SocketException ex)
             {
                 MessageBox.Show("No se puedo establecer conexión " + ex.Message,
                     "ERROR");
             }
-            finally 
+            finally
             {
-                flujo?.Close();
-                remoto?.Close();
+                // Quitar el cierre aquí, ya que el TcpClient debe permanecer abierto
+                // para que el cliente siga enviando peticiones.
+                // flujo?.Close(); 
+                // remoto?.Close(); 
             }
 
             panPlaca.Enabled = false;
@@ -61,14 +66,16 @@ namespace Cliente
                 Comando = "INGRESO",
                 Parametros = new[] { usuario, contraseña }
             };
-            
-            Respuesta respuesta = HazOperacion(pedido);
+
+            // Usar la clase Protocolo para la operación
+            Respuesta respuesta = clienteProtocolo.HazOperacion(pedido, remoto);
             if (respuesta == null)
             {
-                MessageBox.Show("Hubo un error", "ERROR");
+                MessageBox.Show("Hubo un error de conexión", "ERROR");
                 return;
             }
 
+            // ... (lógica de manejo de respuesta se mantiene) ...
             if (respuesta.Estado == "OK" && respuesta.Mensaje == "ACCESO_CONCEDIDO")
             {
                 panPlaca.Enabled = true;
@@ -86,47 +93,6 @@ namespace Cliente
             }
         }
 
-        private Respuesta HazOperacion(Pedido pedido)
-        {
-            if(flujo == null)
-            {
-                MessageBox.Show("No hay conexión", "ERROR");
-                return null;
-            }
-            try
-            {
-                byte[] bufferTx = Encoding.UTF8.GetBytes(
-                    pedido.Comando + " " + string.Join(" ", pedido.Parametros));
-                
-                flujo.Write(bufferTx, 0, bufferTx.Length);
-
-                byte[] bufferRx = new byte[1024];
-                
-                int bytesRx = flujo.Read(bufferRx, 0, bufferRx.Length);
-                
-                string mensaje = Encoding.UTF8.GetString(bufferRx, 0, bytesRx);
-                
-                var partes = mensaje.Split(' ');
-                
-                return new Respuesta
-                {
-                    Estado = partes[0],
-                    Mensaje = string.Join(" ", partes.Skip(1).ToArray())
-                };
-            }
-            catch (SocketException ex)
-            {
-                MessageBox.Show("Error al intentar transmitir " + ex.Message,
-                    "ERROR");
-            }
-            finally 
-            {
-                flujo?.Close();
-                remoto?.Close();
-            }
-            return null;
-        }
-
         private void btnConsultar_Click(object sender, EventArgs e)
         {
             string modelo = txtModelo.Text;
@@ -138,11 +104,11 @@ namespace Cliente
                 Comando = "CALCULO",
                 Parametros = new[] { modelo, marca, placa }
             };
-            
-            Respuesta respuesta = HazOperacion(pedido);
+
+            Respuesta respuesta = clienteProtocolo.HazOperacion(pedido, remoto);
             if (respuesta == null)
             {
-                MessageBox.Show("Hubo un error", "ERROR");
+                MessageBox.Show("Hubo un error de conexión", "ERROR");
                 return;
             }
 
@@ -219,10 +185,10 @@ namespace Cliente
                 Parametros = new[] { mensaje }
             };
 
-            Respuesta respuesta = HazOperacion(pedido);
+            Respuesta respuesta = clienteProtocolo.HazOperacion(pedido, remoto);
             if (respuesta == null)
             {
-                MessageBox.Show("Hubo un error", "ERROR");
+                MessageBox.Show("Hubo un error de conexión", "ERROR");
                 return;
             }
 
@@ -241,8 +207,6 @@ namespace Cliente
 
         private void FrmValidador_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if (flujo != null)
-                flujo.Close();
             if (remoto != null)
                 if (remoto.Connected)
                     remoto.Close();
